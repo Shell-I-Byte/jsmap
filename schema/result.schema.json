@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shell-I-Byte/jsmap/schema/result-v1.json",
+  "title": "JSMap local evidence report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tool_version", "scope", "files_scanned", "findings"],
+  "properties": {
+    "schema_version": {"const": "jsmap.result/v1"},
+    "tool_version": {"type": "string", "minLength": 1},
+    "scope": {"const": "local-files-only"},
+    "files_scanned": {"type": "integer", "minimum": 0, "maximum": 1000},
+    "findings": {
+      "type": "array", "maxItems": 10000,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["path", "source_sha256", "byte_offset", "call", "endpoint", "query_redacted", "userinfo_redacted", "confidence"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "byte_offset": {"type": "integer", "minimum": 0},
+          "call": {"enum": ["fetch", "axios.get", "axios.post", "axios.put", "axios.patch", "axios.delete", "axios.head", "axios.options"]},
+          "endpoint": {"type": "string", "minLength": 1},
+          "query_redacted": {"type": "boolean"},
+          "userinfo_redacted": {"type": "boolean"},
+          "confidence": {"const": "inferred"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,114 @@
+name: jsmap-release-gates
+permissions:
+  contents: read
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+jobs:
+  linux-release-gates:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.26.9', '1.27.2']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+          check-latest: false
+      - run: go version && go env GOOS GOARCH
+      - run: go test -count=1 ./...
+      - run: go test -race -count=1 ./...
+      - run: go test -shuffle=on -count=3 ./...
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go build -trimpath -buildvcs=false ./...
+      - run: go mod verify
+      - run: python3 tests/independent_cli_probes.py
+      - run: python3 tests/html_comment_cli_probes.py
+      - name: Reject malformed bracketed HTTP authority false evidence
+        run: |
+          go build -trimpath -buildvcs=false -o "${{ runner.temp }}/jsmap-url" ./cmd/jsmap
+          python3 tests/authority_cli_probes.py "${{ runner.temp }}/jsmap-url"
+      - name: Offline control-head RegExp oracle regression
+        run: |
+          go build -trimpath -buildvcs=false -o "${{ runner.temp }}/jsmap-control" ./cmd/jsmap
+          python3 tests/control_regex_cli_probes.py "${{ runner.temp }}/jsmap-control"
+      - name: Class-private member candidate falsification (Node syntax checked)
+        run: |
+          go build -trimpath -buildvcs=false -o "${{ runner.temp }}/jsmap-private" ./cmd/jsmap
+          python3 tests/private_member_cli_probes.py "${{ runner.temp }}/jsmap-private"
+      - name: Offline block-terminator RegExp oracle regression
+        run: |
+          go build -trimpath -buildvcs=false -o "${{ runner.temp }}/jsmap-block" ./cmd/jsmap
+          python3 tests/block_regex_cli_probes.py "${{ runner.temp }}/jsmap-block"
+      - name: Statement/declaration RegExp syntax-oracle probes
+        run: |
+          go build -trimpath -buildvcs=false -o "${{ runner.temp }}/jsmap-statement" ./cmd/jsmap
+          python3 tests/statement_regex_cli_probes.py "${{ runner.temp }}/jsmap-statement"
+      - name: Property callee false-positive source oracle
+        run: |
+          go build -trimpath -buildvcs=false -o "${{ runner.temp }}/jsmap-property" ./cmd/jsmap
+          python3 tests/property_calls_cli_probes.py "${{ runner.temp }}/jsmap-property"
+      - name: Local synthetic FIFO swap regression (Linux)
+        run: |
+          go build -o "${{ runner.temp }}/jsmap" ./cmd/jsmap
+          python3 tests/fifo_swap_probe.py "${{ runner.temp }}/jsmap" 100 0.8
+      - name: Linux ancestor symlink-swap file-content scope regression
+        run: |
+          go build -trimpath -buildvcs=false -o "${{ runner.temp }}/jsmap-ancestor" ./cmd/jsmap
+          python3 tests/ancestor_swap_cli_probes.py "${{ runner.temp }}/jsmap-ancestor" 180
+      - run: python3 scripts/release_seal.py --out "${{ runner.temp }}/sealed"
+      - name: Staticcheck v0.8.1
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+          "$(go env GOPATH)/bin/staticcheck" ./...
+      - name: govulncheck v1.9.0
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          "$(go env GOPATH)/bin/govulncheck" ./...
+  native-runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+          - os: macos-15
+            goos: darwin
+            goarch: arm64
+          - os: windows-2025
+            goos: windows
+            goarch: amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.2'
+          check-latest: false
+      - shell: bash
+        run: |
+          test "$(go env GOOS)" = "${{ matrix.goos }}"
+          test "$(go env GOARCH)" = "${{ matrix.goarch }}"
+          go version
+          go test -count=1 ./...
+          go test -race -count=1 ./...
+          go vet ./...
+          go build ./...
+          go mod verify
+          go build -trimpath -buildvcs=false ./...
+          python3 tests/independent_cli_probes.py
+          python3 tests/html_comment_cli_probes.py
+          binary="${{ runner.temp }}/jsmap-native"
+          if [ "${{ matrix.goos }}" = windows ]; then binary="${binary}.exe"; fi
+          go build -trimpath -buildvcs=false -o "$binary" ./cmd/jsmap
+          python3 tests/statement_regex_cli_probes.py "$binary"
+          python3 tests/authority_cli_probes.py "$binary"

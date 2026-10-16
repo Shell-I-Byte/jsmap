@@ -1,0 +1,4 @@
+*.exe
+*.test
+results.json
+.DS_Store

@@ -1,0 +1,1 @@
+fetch('/synthetic?token=PRIVATE');
